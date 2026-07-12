@@ -76,7 +76,7 @@ export function Sidebar() {
       <div className="flex gap-1.5 px-6 pt-5 pb-3">
         <span className="w-2.5 h-2.5 rounded-full bg-[#ED6A5E]" />
         <span className="w-2.5 h-2.5 rounded-full bg-[#F5BF4F]" />
-        <span className="w-2.5 h-2.5 rounded-full bg-[#61C554]" />
+        <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
       </div>
 
       {/* Brand Logo & Name */}
@@ -108,7 +108,7 @@ export function Sidebar() {
                         cn(
                           "group flex items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150",
                           isActive
-                            ? "bg-[#F5F6FF] text-[#3538CD]"
+                            ? "bg-slate-900/5 text-slate-900"
                             : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                         )
                       }
@@ -118,7 +118,7 @@ export function Sidebar() {
                         <span>{item.label}</span>
                       </div>
                       {badge !== null && badge > 0 && (
-                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[#3538CD]/10 px-1.5 text-[10px] font-bold text-[#3538CD]">
+                        <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-900/10 px-1.5 text-[10px] font-bold text-slate-700">
                           {badge}
                         </span>
                       )}
@@ -140,7 +140,7 @@ export function Sidebar() {
               cn(
                 "group flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition-all duration-150",
                 isActive
-                  ? "bg-[#F5F6FF] text-[#3538CD]"
+                  ? "bg-slate-900/5 text-slate-900"
                   : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               )
             }

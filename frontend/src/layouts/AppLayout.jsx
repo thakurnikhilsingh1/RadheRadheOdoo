@@ -18,11 +18,11 @@ export default function AppLayout() {
   const title = TITLES[location.pathname] || "TransitOps";
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-muted/30">
+    <div className="flex h-screen w-full overflow-hidden bg-[#F4F5F7]">
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar title={title} />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+        <main className="flex-1 overflow-y-auto p-5 sm:p-7">
           <Outlet />
         </main>
       </div>

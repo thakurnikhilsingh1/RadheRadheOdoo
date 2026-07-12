@@ -3,10 +3,10 @@ import { Outlet } from "react-router-dom";
 export default function AuthLayout() {
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center bg-[#090A0F] px-4 py-8 overflow-hidden font-sans">
-      {/* Ambient background glow matching the image */}
-      <div className="absolute -top-48 -left-48 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-pink-500/25 to-purple-600/0 blur-[130px] pointer-events-none select-none" />
-      <div className="absolute -bottom-48 -right-48 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-blue-500/25 to-cyan-500/0 blur-[130px] pointer-events-none select-none" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[800px] w-[800px] rounded-full bg-purple-500/5 blur-[150px] pointer-events-none select-none" />
+      {/* Ambient background glow */}
+      <div className="absolute -top-48 -left-48 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-slate-400/20 to-transparent blur-[130px] pointer-events-none select-none" />
+      <div className="absolute -bottom-48 -right-48 h-[600px] w-[600px] rounded-full bg-gradient-to-br from-gray-500/20 to-transparent blur-[130px] pointer-events-none select-none" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[800px] w-[800px] rounded-full bg-zinc-500/10 blur-[150px] pointer-events-none select-none" />
 
       {/* Main Container Card */}
       <div className="relative flex w-full max-w-[1080px] min-h-[640px] lg:h-[720px] flex-col lg:flex-row bg-white rounded-[32px] overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.65)] z-10">

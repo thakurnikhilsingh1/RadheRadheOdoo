@@ -4,51 +4,50 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 9%;
+    --background: 210 17% 96%;
+    --foreground: 220 20% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
+    --card-foreground: 220 20% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
+    --popover-foreground: 220 20% 10%;
 
-    --primary: 0 0% 9%;
+    --primary: 220 20% 10%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 96%;
-    --secondary-foreground: 0 0% 9%;
+    --secondary: 210 16% 93%;
+    --secondary-foreground: 220 20% 10%;
 
-    --muted: 0 0% 96%;
-    --muted-foreground: 0 0% 30%;
+    --muted: 210 16% 93%;
+    --muted-foreground: 215 14% 48%;
 
-    --accent: 38 92% 55%;
-    --accent-foreground: 0 0% 9%;
+    --accent: 220 20% 10%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 100% 47%;
+    --destructive: 0 76% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 71% 33%;
+    --success: 215 16% 32%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 55%;
-    --warning-foreground: 0 0% 9%;
+    --warning: 38 88% 48%;
+    --warning-foreground: 38 70% 18%;
 
-    /* "info" is a neutral ink highlight tone used for active/selected states — no blue in this palette. */
-    --info: 0 0% 9%;
+    --info: 220 20% 10%;
     --info-foreground: 0 0% 100%;
 
-    --border: 0 0% 90%;
-    --input: 0 0% 88%;
-    --ring: 0 0% 9%;
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 220 20% 10%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar: 222 27% 13%;
-    --sidebar-foreground: 220 14% 78%;
-    --sidebar-muted: 220 10% 55%;
-    --sidebar-border: 222 20% 20%;
-    --sidebar-accent: 38 92% 55%;
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 220 20% 10%;
+    --sidebar-muted: 215 13% 52%;
+    --sidebar-border: 214 20% 88%;
+    --sidebar-accent: 220 20% 10%;
   }
 
   * {
@@ -57,14 +56,17 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
   ::selection {
-    background: hsl(0 0% 9%);
-    color: hsl(0 0% 95%);
+    background: hsl(220 20% 10%);
+    color: #fff;
   }
 }
+
+
 
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {
