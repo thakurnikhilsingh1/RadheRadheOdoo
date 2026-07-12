@@ -5,118 +5,53 @@ Active vehicles
 Available vehicles
 Active trips
 Fleet utilization
-Operational cost  
+Operational cost
 */
+const Vehicle = require("../models/Vehicle");
+const Trip = require("../models/Trip");
+const FuelLog = require("../models/FuelLog");
+const Expense = require("../models/Expense");
+const MaintenanceLog = require("../models/MaintenanceLog");
+const asyncHandler = require("../utils/asyncHandler");
 
-const pool=require("../database/db");
+exports.getDashboard = asyncHandler(async (req, res) => {
+  const [totalVehicles, availableVehicles, activeTrips, fuelCostAgg, maintenanceCostAgg, expenseCostAgg] =
+    await Promise.all([
+      Vehicle.countDocuments({}),
+      Vehicle.countDocuments({ status: "Available" }),
+      Trip.countDocuments({ status: "Dispatched" }),
+      FuelLog.aggregate([{ $group: { _id: null, total: { $sum: "$cost" } } }]),
+      MaintenanceLog.aggregate([{ $group: { _id: null, total: { $sum: "$cost" } } }]),
+      Expense.aggregate([{ $group: { _id: null, total: { $sum: "$amount" } } }]),
+    ]);
 
+  const fuelCost = fuelCostAgg[0]?.total || 0;
+  const maintenanceCost = maintenanceCostAgg[0]?.total || 0;
+  const otherExpenses = expenseCostAgg[0]?.total || 0;
 
-exports.getDashboard=async(req,res)=>{
-
-
-try{
-
-
-const vehicles =
-await pool.query(
-"SELECT COUNT(*) FROM vehicles"
-);
-
-
-
-const available =
-await pool.query(
-`
-SELECT COUNT(*)
-FROM vehicles
-WHERE status='Available'
-`
-);
-
-
-
-const trips =
-await pool.query(
-`
-SELECT COUNT(*)
-FROM trips
-WHERE status='Dispatched'
-`
-);
-
-
-
-const cost =
-await pool.query(
-
-`
-SELECT 
-SUM(cost)
-FROM fuel_logs
-
-`
-
-);
-
-
-
-res.json({
-
-totalVehicles:
-vehicles.rows[0].count,
-
-availableVehicles:
-available.rows[0].count,
-
-activeTrips:
-trips.rows[0].count,
-
-fuelCost:
-cost.rows[0].sum || 0
-
+  res.json({
+    totalVehicles,
+    availableVehicles,
+    activeTrips,
+    fleetUtilization: totalVehicles > 0 ? Number((((totalVehicles - availableVehicles) / totalVehicles) * 100).toFixed(1)) : 0,
+    fuelCost,
+    maintenanceCost,
+    otherExpenses,
+    operationalCost: fuelCost + maintenanceCost + otherExpenses,
+  });
 });
 
+exports.exportCSV = asyncHandler(async (req, res) => {
+  const vehicles = await Vehicle.find({}).sort({ created_at: -1 });
 
-}catch(error){
+  const escape = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
 
-res.status(500).json({
-error:error.message
+  let csv = "id,registration_number,vehicle_name,status\n";
+  vehicles.forEach((v) => {
+    csv += `${escape(v.id)},${escape(v.registration_number)},${escape(v.vehicle_name)},${escape(v.status)}\n`;
+  });
+
+  res.header("Content-Type", "text/csv");
+  res.header("Content-Disposition", "attachment; filename=vehicles.csv");
+  res.send(csv);
 });
-
-}
-
-
-};
-
-
-
-
-
-exports.exportCSV=async(req,res)=>{
-
-const result=
-await pool.query(
-"SELECT * FROM vehicles"
-);
-
-
-let csv="id,registration_number,status\n";
-
-
-result.rows.forEach(v=>{
-
-csv+=`${v.id},${v.registration_number},${v.status}\n`;
-
-});
-
-
-
-res.header(
-"Content-Type",
-"text/csv"
-);
-
-
-res.send(csv);
-
-};

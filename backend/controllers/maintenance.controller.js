@@ -1,147 +1,69 @@
-const pool=require("../database/db");
+const mongoose = require("mongoose");
+const MaintenanceLog = require("../models/MaintenanceLog");
+const Vehicle = require("../models/Vehicle");
+const ApiError = require("../utils/ApiError");
+const asyncHandler = require("../utils/asyncHandler");
 
+exports.getMaintenance = asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.vehicle_id) filter.vehicle_id = req.query.vehicle_id;
+  if (req.query.status) filter.status = req.query.status;
 
-exports.getMaintenance=async(req,res)=>{
-
-const result=await pool.query(
-"SELECT * FROM maintenance_logs"
-);
-
-res.json(result.rows);
-
-};
-
-
-
-
-exports.createMaintenance=async(req,res)=>{
-
-const client=await pool.connect();
-
-
-try{
-
-await client.query("BEGIN");
-
-
-const {
-vehicle_id,
-maintenance_type,
-description,
-cost,
-start_date
-}=req.body;
-
-
-
-const result=await client.query(
-
-`
-INSERT INTO maintenance_logs
-(vehicle_id,maintenance_type,description,cost,start_date,status)
-
-VALUES($1,$2,$3,$4,$5,'Active')
-
-RETURNING *
-`,
-
-[
-vehicle_id,
-maintenance_type,
-description,
-cost,
-start_date
-]
-
-);
-
-
-
-await client.query(
-
-`
-UPDATE vehicles
-SET status='In Shop'
-WHERE id=$1
-`,
-[vehicle_id]
-
-);
-
-
-
-await client.query("COMMIT");
-
-
-res.status(201).json(result.rows[0]);
-
-
-}catch(error){
-
-await client.query("ROLLBACK");
-
-res.status(500).json({
-error:error.message
+  const logs = await MaintenanceLog.find(filter).sort({ created_at: -1 });
+  res.json(logs);
 });
 
+exports.createMaintenance = asyncHandler(async (req, res) => {
+  const { vehicle_id, maintenance_type, description, cost, start_date } = req.body;
 
-}
+  const vehicle = await Vehicle.findById(vehicle_id);
+  if (!vehicle) throw ApiError.notFound("Vehicle not found");
+  if (vehicle.status === "Retired") {
+    throw ApiError.badRequest("Retired vehicles cannot be sent for maintenance");
+  }
 
-finally{
+  const session = await mongoose.startSession();
+  try {
+    let log;
+    await session.withTransaction(async () => {
+      const created = await MaintenanceLog.create(
+        [{ vehicle_id, maintenance_type, description, cost, start_date, status: "Active" }],
+        { session }
+      );
+      log = created[0];
 
-client.release();
-
-}
-
-};
-
-
-
-
-exports.closeMaintenance=async(req,res)=>{
-
-
-const maintenance=await pool.query(
-
-`
-SELECT vehicle_id
-FROM maintenance_logs
-WHERE id=$1
-`,
-[req.params.id]
-
-);
-
-
-
-await pool.query(
-
-`
-UPDATE maintenance_logs
-SET status='Completed'
-WHERE id=$1
-`,
-[req.params.id]
-
-);
-
-
-
-await pool.query(
-
-`
-UPDATE vehicles
-SET status='Available'
-WHERE id=$1
-`,
-[maintenance.rows[0].vehicle_id]
-
-);
-
-
-
-res.json({
-message:"Maintenance closed"
+      await Vehicle.findByIdAndUpdate(vehicle_id, { status: "In Shop" }, { session });
+    });
+    res.status(201).json(log);
+  } finally {
+    session.endSession();
+  }
 });
 
-};
+exports.closeMaintenance = asyncHandler(async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    let log;
+    await session.withTransaction(async () => {
+      const found = await MaintenanceLog.findById(req.params.id).session(session);
+      if (!found) throw ApiError.notFound("Maintenance log not found");
+      if (found.status === "Completed") {
+        throw ApiError.badRequest("Maintenance log is already completed");
+      }
+
+      found.status = "Completed";
+      found.end_date = new Date();
+      await found.save({ session });
+      log = found;
+
+      const vehicle = await Vehicle.findById(found.vehicle_id).session(session);
+      if (vehicle && vehicle.status !== "Retired") {
+        vehicle.status = "Available";
+        await vehicle.save({ session });
+      }
+    });
+    res.json({ message: "Maintenance closed", log });
+  } finally {
+    session.endSession();
+  }
+});

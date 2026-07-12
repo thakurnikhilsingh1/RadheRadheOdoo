@@ -10,6 +10,8 @@ getMaintenance
 
 
 const {requireAuth}=require("../middleware/auth");
+const validate = require("../middleware/validate");
+const { maintenance: maintenanceValidators } = require("../validators");
 
 
 
@@ -24,6 +26,8 @@ getMaintenance
 router.post(
 "/",
 requireAuth,
+maintenanceValidators.create,
+validate,
 createMaintenance
 );
 
@@ -32,6 +36,8 @@ createMaintenance
 router.patch(
 "/:id/close",
 requireAuth,
+maintenanceValidators.idParam,
+validate,
 closeMaintenance
 );
 

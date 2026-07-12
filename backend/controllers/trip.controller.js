@@ -1,409 +1,171 @@
-/* Handles:
+/* Handles trip lifecycle: Draft -> Dispatched -> Completed | Cancelled.
+ *
+ * The original Postgres implementation enforced these rules with database
+ * triggers. MongoDB has no equivalent, so the same rules are enforced here in
+ * the application layer, wrapped in a transaction so a trip's status and its
+ * vehicle/driver status always move together. Multi-document transactions
+ * require MongoDB to be running as a replica set (Atlas clusters are, by
+ * default, even on the free tier).
+ */
+const mongoose = require("mongoose");
+const Trip = require("../models/Trip");
+const Vehicle = require("../models/Vehicle");
+const Driver = require("../models/Driver");
+const ApiError = require("../utils/ApiError");
+const asyncHandler = require("../utils/asyncHandler");
 
-Create trip
-Dispatch
-Complete
-Cancel
-Status transitions */
-
-const pool = require("../database/db");
-
-
-// Get all trips
-exports.getTrips = async(req,res)=>{
-
-try{
-
-const result = await pool.query(
-`
-SELECT 
-trips.*,
-vehicles.vehicle_name,
-drivers.name AS driver_name
-
-FROM trips
-
-JOIN vehicles
-ON trips.vehicle_id = vehicles.id
-
-JOIN drivers
-ON trips.driver_id = drivers.id
-
-`
-);
-
-res.json(result.rows);
-
-
-}catch(error){
-
-res.status(500).json({error:error.message});
-
+function serializeTrip(trip) {
+  const json = trip.toJSON();
+  if (trip.vehicle_id && trip.vehicle_id.vehicle_name !== undefined) {
+    json.vehicle_id = trip.vehicle_id._id.toString();
+    json.vehicle_name = trip.vehicle_id.vehicle_name;
+  }
+  if (trip.driver_id && trip.driver_id.name !== undefined) {
+    json.driver_id = trip.driver_id._id.toString();
+    json.driver_name = trip.driver_id.name;
+  }
+  return json;
 }
 
-};
+exports.getTrips = asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.status) filter.status = req.query.status;
 
+  const trips = await Trip.find(filter)
+    .sort({ created_at: -1 })
+    .populate("vehicle_id", "vehicle_name")
+    .populate("driver_id", "name");
 
-
-// Create Trip
-
-exports.createTrip = async(req,res)=>{
-
-try{
-
-const {
-source,
-destination,
-vehicle_id,
-driver_id,
-cargo_weight,
-planned_distance
-}=req.body;
-
-
-
-// check vehicle
-
-const vehicle = await pool.query(
-"SELECT * FROM vehicles WHERE id=$1",
-[vehicle_id]
-);
-
-
-
-if(vehicle.rows.length===0)
-return res.status(404).json({
-error:"Vehicle not found"
+  res.json(trips.map(serializeTrip));
 });
 
+exports.createTrip = asyncHandler(async (req, res) => {
+  const { source, destination, vehicle_id, driver_id, cargo_weight, planned_distance } = req.body;
 
+  const vehicle = await Vehicle.findById(vehicle_id);
+  if (!vehicle) throw ApiError.notFound("Vehicle not found");
 
-// capacity validation
+  if (vehicle.status !== "Available") {
+    throw ApiError.badRequest(`Vehicle is not available (current status: ${vehicle.status})`);
+  }
 
-if(cargo_weight > vehicle.rows[0].max_load_capacity){
+  if (Number(cargo_weight) > Number(vehicle.max_load_capacity)) {
+    throw ApiError.badRequest("Cargo weight exceeds vehicle maximum capacity");
+  }
 
-return res.status(400).json({
-error:"Cargo weight exceeds vehicle capacity"
+  const driver = await Driver.findById(driver_id);
+  if (!driver) throw ApiError.notFound("Driver not found");
+
+  if (driver.status !== "Available") {
+    throw ApiError.badRequest(`Driver is not available (current status: ${driver.status})`);
+  }
+
+  if (driver.license_expiry_date && driver.license_expiry_date < new Date()) {
+    throw ApiError.badRequest("Driver license has expired");
+  }
+
+  const trip = await Trip.create({
+    source,
+    destination,
+    vehicle_id,
+    driver_id,
+    cargo_weight,
+    planned_distance,
+  });
+
+  res.status(201).json(trip);
 });
 
+async function withTransaction(work) {
+  const session = await mongoose.startSession();
+  try {
+    let result;
+    await session.withTransaction(async () => {
+      result = await work(session);
+    });
+    return result;
+  } finally {
+    session.endSession();
+  }
 }
 
+exports.dispatchTrip = asyncHandler(async (req, res) => {
+  const result = await withTransaction(async (session) => {
+    const trip = await Trip.findById(req.params.id).session(session);
+    if (!trip) throw ApiError.notFound("Trip not found");
+    if (trip.status !== "Draft") {
+      throw ApiError.badRequest(`Trip cannot be dispatched from status '${trip.status}'`);
+    }
 
+    const vehicle = await Vehicle.findById(trip.vehicle_id).session(session);
+    const driver = await Driver.findById(trip.driver_id).session(session);
+    if (!vehicle || vehicle.status !== "Available") {
+      throw ApiError.badRequest("Vehicle is no longer available");
+    }
+    if (!driver || driver.status !== "Available") {
+      throw ApiError.badRequest("Driver is no longer available");
+    }
 
-// check vehicle status
+    trip.status = "Dispatched";
+    trip.dispatched_at = new Date();
+    vehicle.status = "On Trip";
+    driver.status = "On Trip";
 
-if(vehicle.rows[0].status!=="Available"){
+    await trip.save({ session });
+    await vehicle.save({ session });
+    await driver.save({ session });
 
-return res.status(400).json({
-error:"Vehicle not available"
+    return trip;
+  });
+
+  res.json({ message: "Trip dispatched", trip: result });
 });
 
-}
+exports.completeTrip = asyncHandler(async (req, res) => {
+  const { final_odometer, fuel_consumed_liters } = req.body || {};
 
+  const result = await withTransaction(async (session) => {
+    const trip = await Trip.findById(req.params.id).session(session);
+    if (!trip) throw ApiError.notFound("Trip not found");
+    if (trip.status !== "Dispatched") {
+      throw ApiError.badRequest(`Trip cannot be completed from status '${trip.status}'`);
+    }
 
+    trip.status = "Completed";
+    trip.completed_at = new Date();
+    if (final_odometer !== undefined) trip.final_odometer = final_odometer;
+    if (fuel_consumed_liters !== undefined) trip.fuel_consumed_liters = fuel_consumed_liters;
+    await trip.save({ session });
 
-// check driver
+    await Vehicle.findByIdAndUpdate(trip.vehicle_id, { status: "Available" }, { session });
+    await Driver.findByIdAndUpdate(trip.driver_id, { status: "Available" }, { session });
 
-const driver = await pool.query(
+    return trip;
+  });
 
-"SELECT * FROM drivers WHERE id=$1",
-[driver_id]
-
-);
-
-
-
-if(driver.rows[0].status!=="Available"){
-
-return res.status(400).json({
-error:"Driver not available"
+  res.json({ message: "Trip completed", trip: result });
 });
 
-}
+exports.cancelTrip = asyncHandler(async (req, res) => {
+  const result = await withTransaction(async (session) => {
+    const trip = await Trip.findById(req.params.id).session(session);
+    if (!trip) throw ApiError.notFound("Trip not found");
+    if (!["Draft", "Dispatched"].includes(trip.status)) {
+      throw ApiError.badRequest(`Trip cannot be cancelled from status '${trip.status}'`);
+    }
 
+    const wasDispatched = trip.status === "Dispatched";
+    trip.status = "Cancelled";
+    trip.cancelled_at = new Date();
+    await trip.save({ session });
 
+    if (wasDispatched) {
+      await Vehicle.findByIdAndUpdate(trip.vehicle_id, { status: "Available" }, { session });
+      await Driver.findByIdAndUpdate(trip.driver_id, { status: "Available" }, { session });
+    }
 
-const result = await pool.query(
+    return trip;
+  });
 
-`
-INSERT INTO trips
-(source,destination,vehicle_id,driver_id,cargo_weight,planned_distance)
-
-VALUES($1,$2,$3,$4,$5,$6)
-
-RETURNING *
-`,
-
-[
-source,
-destination,
-vehicle_id,
-driver_id,
-cargo_weight,
-planned_distance
-]
-
-);
-
-
-res.status(201).json(result.rows[0]);
-
-
-
-}catch(error){
-
-res.status(500).json({
-error:error.message
+  res.json({ message: "Trip cancelled", trip: result });
 });
-
-}
-
-};
-
-
-
-
-// Dispatch Trip
-
-exports.dispatchTrip=async(req,res)=>{
-
-const client = await pool.connect();
-
-
-try{
-
-await client.query("BEGIN");
-
-
-
-const trip = await client.query(
-
-"SELECT * FROM trips WHERE id=$1",
-
-[req.params.id]
-
-);
-
-
-
-if(trip.rows.length===0)
-throw Error("Trip not found");
-
-
-
-await client.query(
-
-`
-UPDATE trips
-SET status='Dispatched'
-WHERE id=$1
-`,
-
-[req.params.id]
-
-);
-
-
-
-await client.query(
-
-`
-UPDATE vehicles
-SET status='On Trip'
-WHERE id=$1
-`,
-
-[trip.rows[0].vehicle_id]
-
-);
-
-
-
-await client.query(
-
-`
-UPDATE drivers
-SET status='On Trip'
-WHERE id=$1
-`,
-
-[trip.rows[0].driver_id]
-
-);
-
-
-
-await client.query("COMMIT");
-
-
-res.json({
-message:"Trip dispatched"
-});
-
-
-}catch(error){
-
-await client.query("ROLLBACK");
-
-res.status(400).json({
-error:error.message
-});
-
-
-}
-
-finally{
-
-client.release();
-
-}
-
-
-};
-
-
-
-
-// Complete Trip
-
-exports.completeTrip=async(req,res)=>{
-
-try{
-
-
-const trip=await pool.query(
-"SELECT * FROM trips WHERE id=$1",
-[req.params.id]
-);
-
-
-await pool.query(
-
-`
-UPDATE trips
-SET status='Completed'
-WHERE id=$1
-`,
-
-[req.params.id]
-
-);
-
-
-
-await pool.query(
-
-`
-UPDATE vehicles
-SET status='Available'
-WHERE id=$1
-`,
-
-[trip.rows[0].vehicle_id]
-
-);
-
-
-
-await pool.query(
-
-`
-UPDATE drivers
-SET status='Available'
-WHERE id=$1
-`,
-
-[trip.rows[0].driver_id]
-
-);
-
-
-
-res.json({
-message:"Trip completed"
-});
-
-
-}catch(error){
-
-res.status(500).json({
-error:error.message
-});
-
-}
-
-};
-
-
-
-
-// Cancel Trip
-
-exports.cancelTrip=async(req,res)=>{
-
-try{
-
-
-const trip=await pool.query(
-
-"SELECT * FROM trips WHERE id=$1",
-
-[req.params.id]
-
-);
-
-
-
-await pool.query(
-
-`
-UPDATE trips
-SET status='Cancelled'
-WHERE id=$1
-`,
-[req.params.id]
-
-);
-
-
-
-await pool.query(
-
-`
-UPDATE vehicles
-SET status='Available'
-WHERE id=$1
-`,
-[trip.rows[0].vehicle_id]
-
-);
-
-
-
-await pool.query(
-
-`
-UPDATE drivers
-SET status='Available'
-WHERE id=$1
-`,
-[trip.rows[0].driver_id]
-
-);
-
-
-
-res.json({
-message:"Trip cancelled"
-});
-
-
-}catch(error){
-
-res.status(500).json({
-error:error.message
-});
-
-}
-
-};

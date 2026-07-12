@@ -13,6 +13,8 @@ getTrips
 
 
 const {requireAuth}=require("../middleware/auth");
+const validate = require("../middleware/validate");
+const { trip: tripValidators } = require("../validators");
 
 
 
@@ -27,6 +29,8 @@ getTrips
 router.post(
 "/",
 requireAuth,
+tripValidators.create,
+validate,
 createTrip
 );
 
@@ -35,6 +39,8 @@ createTrip
 router.patch(
 "/:id/dispatch",
 requireAuth,
+tripValidators.idParam,
+validate,
 dispatchTrip
 );
 
@@ -43,6 +49,8 @@ dispatchTrip
 router.patch(
 "/:id/complete",
 requireAuth,
+tripValidators.idParam,
+validate,
 completeTrip
 );
 
@@ -51,6 +59,8 @@ completeTrip
 router.patch(
 "/:id/cancel",
 requireAuth,
+tripValidators.idParam,
+validate,
 cancelTrip
 );
 

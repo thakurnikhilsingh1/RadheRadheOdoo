@@ -9,6 +9,8 @@ getFuelLogs
 
 
 const {requireAuth}=require("../middleware/auth");
+const validate = require("../middleware/validate");
+const { fuel: fuelValidators } = require("../validators");
 
 
 
@@ -23,6 +25,8 @@ getFuelLogs
 router.post(
 "/",
 requireAuth,
+fuelValidators.create,
+validate,
 addFuelLog
 );
 

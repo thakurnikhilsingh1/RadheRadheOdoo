@@ -10,6 +10,8 @@ const {
 } = require("../controllers/vehicle.controller");
 
 const {requireAuth, requireRole}=require("../middleware/auth");
+const validate = require("../middleware/validate");
+const { vehicle: vehicleValidators } = require("../validators");
 
 
 // View vehicles
@@ -24,6 +26,8 @@ getVehicles
 router.get(
 "/:id",
 requireAuth,
+vehicleValidators.idParam,
+validate,
 getVehicleById
 );
 
@@ -32,7 +36,9 @@ getVehicleById
 router.post(
 "/",
 requireAuth,
-requireRole("Fleet Manager"),
+requireRole("Fleet Manager", "Admin"),
+vehicleValidators.create,
+validate,
 createVehicle
 );
 
@@ -41,7 +47,9 @@ createVehicle
 router.put(
 "/:id",
 requireAuth,
-requireRole("Fleet Manager"),
+requireRole("Fleet Manager", "Admin"),
+vehicleValidators.update,
+validate,
 updateVehicle
 );
 
@@ -50,7 +58,9 @@ updateVehicle
 router.delete(
 "/:id",
 requireAuth,
-requireRole("Fleet Manager"),
+requireRole("Fleet Manager", "Admin"),
+vehicleValidators.idParam,
+validate,
 deleteVehicle
 );
 

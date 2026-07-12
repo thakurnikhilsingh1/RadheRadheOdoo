@@ -10,7 +10,9 @@ deleteDriver
 }=require("../controllers/driver.controller");
 
 
-const {requireAuth}=require("../middleware/auth");
+const {requireAuth, requireRole}=require("../middleware/auth");
+const validate = require("../middleware/validate");
+const { driver: driverValidators } = require("../validators");
 
 
 router.get(
@@ -23,6 +25,9 @@ getDrivers
 router.post(
 "/",
 requireAuth,
+requireRole("Fleet Manager", "Admin"),
+driverValidators.create,
+validate,
 createDriver
 );
 
@@ -30,6 +35,9 @@ createDriver
 router.put(
 "/:id",
 requireAuth,
+requireRole("Fleet Manager", "Admin"),
+driverValidators.update,
+validate,
 updateDriver
 );
 
@@ -37,6 +45,9 @@ updateDriver
 router.delete(
 "/:id",
 requireAuth,
+requireRole("Fleet Manager", "Admin"),
+driverValidators.idParam,
+validate,
 deleteDriver
 );
 

@@ -9,6 +9,8 @@ getExpenses
 
 
 const {requireAuth}=require("../middleware/auth");
+const validate = require("../middleware/validate");
+const { expense: expenseValidators } = require("../validators");
 
 
 
@@ -23,6 +25,8 @@ getExpenses
 router.post(
 "/",
 requireAuth,
+expenseValidators.create,
+validate,
 addExpense
 );
 

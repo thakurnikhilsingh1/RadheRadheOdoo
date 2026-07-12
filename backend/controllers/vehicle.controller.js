@@ -1,113 +1,62 @@
-const pool=require("../database/db");
+const Vehicle = require("../models/Vehicle");
+const ApiError = require("../utils/ApiError");
+const asyncHandler = require("../utils/asyncHandler");
 
+exports.getVehicles = asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.status) filter.status = req.query.status;
 
-exports.getVehicles=async(req,res)=>{
-
-const result=await pool.query(
-"SELECT * FROM vehicles"
-);
-
-res.json(result.rows);
-
-};
-
-
-
-exports.createVehicle=async(req,res)=>{
-
-const {
-registration_number,
-vehicle_name,
-vehicle_type,
-max_load_capacity,
-odometer,
-acquisition_cost
-}=req.body;
-
-
-const result=await pool.query(
-
-`
-INSERT INTO vehicles
-(registration_number,vehicle_name,vehicle_type,max_load_capacity,odometer,acquisition_cost)
-
-VALUES($1,$2,$3,$4,$5,$6)
-
-RETURNING *
-`,
-[
-registration_number,
-vehicle_name,
-vehicle_type,
-max_load_capacity,
-odometer,
-acquisition_cost
-]
-
-);
-
-
-res.status(201).json(result.rows[0]);
-
-};
-
-
-
-exports.getVehicleById=async(req,res)=>{
-
-const result=await pool.query(
-"SELECT * FROM vehicles WHERE id=$1",
-[req.params.id]
-);
-
-res.json(result.rows[0]);
-
-};
-
-
-
-exports.updateVehicle=async(req,res)=>{
-
-const result=await pool.query(
-
-`
-UPDATE vehicles
-SET vehicle_name=$1,status=$2
-WHERE id=$3
-RETURNING *
-`,
-
-[
-req.body.vehicle_name,
-req.body.status,
-req.params.id
-]
-
-);
-
-
-res.json(result.rows[0]);
-
-};
-
-
-
-exports.deleteVehicle=async(req,res)=>{
-
-await pool.query(
-
-`
-UPDATE vehicles
-SET status='Retired'
-WHERE id=$1
-`,
-[req.params.id]
-
-);
-
-
-res.json({
-message:"Vehicle retired"
+  const vehicles = await Vehicle.find(filter).sort({ created_at: -1 });
+  res.json(vehicles);
 });
 
-};
+exports.getVehicleById = asyncHandler(async (req, res) => {
+  const vehicle = await Vehicle.findById(req.params.id);
+  if (!vehicle) throw ApiError.notFound("Vehicle not found");
+  res.json(vehicle);
+});
+
+exports.createVehicle = asyncHandler(async (req, res) => {
+  const { registration_number, vehicle_name, vehicle_type, max_load_capacity, odometer, acquisition_cost } =
+    req.body;
+
+  const vehicle = await Vehicle.create({
+    registration_number,
+    vehicle_name,
+    vehicle_type,
+    max_load_capacity,
+    odometer,
+    acquisition_cost,
+  });
+
+  res.status(201).json(vehicle);
+});
+
+exports.updateVehicle = asyncHandler(async (req, res) => {
+  const allowedFields = ["vehicle_name", "vehicle_type", "odometer", "acquisition_cost", "status"];
+  const updates = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) updates[field] = req.body[field];
+  }
+
+  const vehicle = await Vehicle.findByIdAndUpdate(req.params.id, updates, {
+    new: true,
+    runValidators: true,
+  });
+  if (!vehicle) throw ApiError.notFound("Vehicle not found");
+
+  res.json(vehicle);
+});
+
+// Soft delete: vehicles are retired, never hard-deleted, so trip/maintenance
+// history keeps referencing a valid vehicle document.
+exports.deleteVehicle = asyncHandler(async (req, res) => {
+  const vehicle = await Vehicle.findByIdAndUpdate(
+    req.params.id,
+    { status: "Retired" },
+    { new: true, runValidators: true }
+  );
+  if (!vehicle) throw ApiError.notFound("Vehicle not found");
+
+  res.json({ message: "Vehicle retired", vehicle });
+});

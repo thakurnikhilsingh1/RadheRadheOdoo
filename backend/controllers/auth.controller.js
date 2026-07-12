@@ -1,102 +1,63 @@
-const pool = require("../database/db");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+const ApiError = require("../utils/ApiError");
+const asyncHandler = require("../utils/asyncHandler");
 
+const SALT_ROUNDS = 10;
 
-exports.register = async(req,res)=>{
+exports.register = asyncHandler(async (req, res) => {
+  const { name, email, password, role_name } = req.body;
 
-try{
+  const existing = await User.findOne({ email: email.toLowerCase() });
+  if (existing) {
+    throw ApiError.conflict("A user with that email already exists");
+  }
 
-const {name,email,password,role_id}=req.body;
+  const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
+  const user = await User.create({
+    name,
+    email,
+    password: hashedPassword,
+    role_name: role_name || undefined,
+  });
 
-const hashedPassword = await bcrypt.hash(password,10);
-
-
-const result = await pool.query(
-`
-INSERT INTO users(name,email,password,role_id)
-VALUES($1,$2,$3,$4)
-RETURNING id,name,email
-`,
-[name,email,hashedPassword,role_id]
-);
-
-
-res.status(201).json(result.rows[0]);
-
-
-}catch(error){
-
-res.status(500).json({error:error.message});
-
-}
-
-};
-
-
-
-exports.login = async(req,res)=>{
-
-try{
-
-const {email,password}=req.body;
-
-
-const user = await pool.query(
-`
-SELECT users.*,roles.role_name
-FROM users
-JOIN roles
-ON users.role_id=roles.id
-WHERE email=$1
-`,
-[email]
-);
-
-
-
-if(user.rows.length===0)
-return res.status(401).json({
-error:"Invalid credentials"
+  res.status(201).json(user.toJSON());
 });
 
+exports.login = asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
 
+  const user = await User.findOne({ email: email.toLowerCase() }).select("+password");
+  if (!user) {
+    throw ApiError.unauthorized("Invalid credentials");
+  }
 
-const valid = await bcrypt.compare(
-password,
-user.rows[0].password
-);
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) {
+    throw ApiError.unauthorized("Invalid credentials");
+  }
 
+  const token = jwt.sign(
+    {
+      userId: user._id.toString(),
+      roleName: user.role_name,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: "1d" }
+  );
 
-if(!valid)
-return res.status(401).json({
-error:"Invalid credentials"
+  res.json({
+    token,
+    user: { id: user._id.toString(), name: user.name, email: user.email, role_name: user.role_name },
+  });
 });
 
-
-
-const token = jwt.sign(
-{
-userId:user.rows[0].id,
-roleId:user.rows[0].role_id,
-roleName:user.rows[0].role_name
-},
-process.env.JWT_SECRET,
-{
-expiresIn:"1d"
-}
-);
-
-
-
-res.json({token});
-
-
-}catch(error){
-
-res.status(500).json({error:error.message});
-
-}
-
-};
+exports.me = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user.userId);
+  if (!user) {
+    throw ApiError.notFound("User not found");
+  }
+  res.json(user.toJSON());
+});

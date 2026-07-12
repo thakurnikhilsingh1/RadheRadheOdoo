@@ -1,93 +1,61 @@
-const pool=require("../database/db");
+const Driver = require("../models/Driver");
+const ApiError = require("../utils/ApiError");
+const asyncHandler = require("../utils/asyncHandler");
 
+exports.getDrivers = asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.status) filter.status = req.query.status;
 
-exports.getDrivers=async(req,res)=>{
-
-const result=await pool.query(
-"SELECT * FROM drivers"
-);
-
-res.json(result.rows);
-
-};
-
-
-
-exports.createDriver=async(req,res)=>{
-
-const result=await pool.query(
-
-`
-INSERT INTO drivers
-(name,license_number,license_category,license_expiry_date,contact_number,safety_score)
-
-VALUES($1,$2,$3,$4,$5,$6)
-
-RETURNING *
-`,
-
-[
-req.body.name,
-req.body.license_number,
-req.body.license_category,
-req.body.license_expiry_date,
-req.body.contact_number,
-req.body.safety_score
-]
-
-);
-
-
-res.status(201).json(result.rows[0]);
-
-};
-
-
-
-exports.updateDriver=async(req,res)=>{
-
-
-const result=await pool.query(
-
-`
-UPDATE drivers
-SET status=$1,safety_score=$2
-WHERE id=$3
-RETURNING *
-`,
-
-[
-req.body.status,
-req.body.safety_score,
-req.params.id
-]
-
-);
-
-
-res.json(result.rows[0]);
-
-};
-
-
-
-exports.deleteDriver=async(req,res)=>{
-
-
-await pool.query(
-
-`
-UPDATE drivers
-SET status='Suspended'
-WHERE id=$1
-`,
-[req.params.id]
-
-);
-
-
-res.json({
-message:"Driver suspended"
+  const drivers = await Driver.find(filter).sort({ created_at: -1 });
+  res.json(drivers);
 });
 
-};
+exports.getDriverById = asyncHandler(async (req, res) => {
+  const driver = await Driver.findById(req.params.id);
+  if (!driver) throw ApiError.notFound("Driver not found");
+  res.json(driver);
+});
+
+exports.createDriver = asyncHandler(async (req, res) => {
+  const { name, license_number, license_category, license_expiry_date, contact_number, safety_score } = req.body;
+
+  const driver = await Driver.create({
+    name,
+    license_number,
+    license_category,
+    license_expiry_date,
+    contact_number,
+    safety_score,
+  });
+
+  res.status(201).json(driver);
+});
+
+exports.updateDriver = asyncHandler(async (req, res) => {
+  const allowedFields = ["name", "license_category", "contact_number", "status", "safety_score"];
+  const updates = {};
+  for (const field of allowedFields) {
+    if (req.body[field] !== undefined) updates[field] = req.body[field];
+  }
+
+  const driver = await Driver.findByIdAndUpdate(req.params.id, updates, {
+    new: true,
+    runValidators: true,
+  });
+  if (!driver) throw ApiError.notFound("Driver not found");
+
+  res.json(driver);
+});
+
+// Soft delete: drivers are suspended, never hard-deleted, so trip history
+// keeps referencing a valid driver document.
+exports.deleteDriver = asyncHandler(async (req, res) => {
+  const driver = await Driver.findByIdAndUpdate(
+    req.params.id,
+    { status: "Suspended" },
+    { new: true, runValidators: true }
+  );
+  if (!driver) throw ApiError.notFound("Driver not found");
+
+  res.json({ message: "Driver suspended", driver });
+});
