@@ -1,0 +1,1 @@
+- [TransitOps Postgres→MongoDB migration](transitops-mongo-migration.md) — kept resource-based REST contract/snake_case; frontend still uses a different generic/camelCase contract — reconciliation deferred.
